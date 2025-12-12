@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Forward Simulation - GenAI Decision Engine</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.2/marked.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a;
+            color: #e2e8f0;
+        }
+
+        .chat-container {
+            height: calc(100vh - 280px);
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding-bottom: 20px;
+        }
+
+        .message-bubble {
+            max-width: 85%;
+            animation: fadeIn 0.3s ease-in-out;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+        
+        @media (max-width: 768px) {
+            .message-bubble {
+                max-width: 95%;
+            }
+        }
+
+        .user-message {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            border-radius: 18px 18px 4px 18px;
+        }
+
+        .bot-message {
+            background-color: #1e293b;
+            border-radius: 18px 18px 18px 4px;
+            border: 1px solid #334155;
+        }
+
+        .typing-indicator span {
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            background-color: #94a3b8;
+            border-radius: 50%;
+            animation: typing 1.4s infinite ease-in-out both;
+            margin: 0 2px;
+        }
+
+        .typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
+        .typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
+
+        @keyframes typing {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1); }
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569; 
+        }
+
+        .markdown-body pre {
+            background-color: #0f172a !important;
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1rem 0;
+            overflow-x: auto;
+        }
+        
+        .markdown-body code {
+            background-color: #334155;
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-size: 0.875em;
+        }
+        
+        .markdown-body pre code {
+            background-color: transparent;
+            padding: 0;
+        }
+        
+        .input-wrapper {
+            position: sticky;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(to top, #0f172a 70%, transparent);
+            backdrop-filter: blur(10px);
+            padding: 1.5rem 1rem;
+            z-index: 20;
+        }
+        
+        @media (max-width: 768px) {
+            .chat-container {
+                height: calc(100vh - 320px);
+                padding-left: 0.5rem;
+                padding-right: 0.5rem;
+            }
+            
+            header {
+                padding: 0.75rem;
+            }
+            
+            header h1 {
+                font-size: 1rem;
+            }
+            
+            header .text-xs {
+                font-size: 0.625rem;
+            }
+            
+            .input-wrapper {
+                padding: 1rem 0.5rem;
+            }
+            
+            .bot-message, .user-message {
+                font-size: 0.875rem;
+            }
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden">
+
+    <!-- Header -->
+    <header class="bg-slate-900 border-b border-slate-800 p-3 md:p-4 shadow-lg z-10 flex-shrink-0">
+        <div class="max-w-7xl mx-auto flex justify-between items-center flex-wrap gap-2">
+            <div class="flex items-center gap-2 md:gap-3">
+                <div class="w-8 h-8 md:w-10 md:h-10 bg-blue-600 rounded-lg flex items-center justify-center shadow-blue-500/20 shadow-lg">
+                    <i class="fas fa-brain text-white text-lg md:text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-base md:text-xl font-bold text-white tracking-tight">Forward Simulation</h1>
+                    <p class="text-xs text-slate-400 hidden sm:block">GenAI Decision Engine</p>
+                </div>
+            </div>
+            
+            <div class="flex items-center gap-2 md:gap-4 flex-1 justify-end max-w-md">
+                <div class="relative group flex-1 max-w-xs">
+                    <select id="modelSelect" class="appearance-none bg-slate-800 border border-slate-700 text-slate-300 text-xs md:text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2 md:p-2.5 pr-8 cursor-pointer hover:bg-slate-750 transition-colors">
+                        <option value="" disabled selected>Loading models...</option>
+                    </select>
+                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-400">
+                        <i class="fas fa-chevron-down text-xs"></i>
+                    </div>
+                </div>
+                <div class="h-6 md:h-8 w-px bg-slate-700 hidden sm:block"></div>
+                <div class="items-center gap-2 text-xs text-slate-400 hidden sm:flex">
+                    <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                    <span class="hidden md:inline">Online</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Chat Area -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-2 md:px-4 flex flex-col relative overflow-hidden">
+        <div id="chatContainer" class="chat-container space-y-4 md:space-y-6">
+            <!-- Welcome Message -->
+            <div class="flex justify-start pt-4">
+                <div class="flex gap-2 md:gap-3 max-w-3xl">
+                    <div class="w-6 h-6 md:w-8 md:h-8 rounded-full bg-blue-600 flex-shrink-0 flex items-center justify-center mt-1">
+                        <i class="fas fa-robot text-white text-xs"></i>
+                    </div>
+                    <div class="bot-message p-3 md:p-4 shadow-md">
+                        <p class="text-xs md:text-sm leading-relaxed">
+                            Hello! I'm your AI Decision Engine assistant. I can help you simulate decisions, explain rules, check limits, and analyze transaction logic using both the codebase and live database.
+                            <br><br>
+                            Try asking:
+                            <span class="block mt-2 text-blue-400 cursor-pointer hover:underline" onclick="setInput('Simulate a decision for Alice Johnson sending 3000 USD via SRCX')">"Simulate a decision for Alice Johnson sending 3000 USD via SRCX"</span>
+                            <span class="block mt-1 text-blue-400 cursor-pointer hover:underline" onclick="setInput('Why was rule R002 triggered for the last transaction?')">"Why was rule R002 triggered for the last transaction?"</span>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Input Area -->
+        <div class="input-wrapper">
+            <div class="max-w-4xl mx-auto relative">
+                <form id="queryForm" class="relative group">
+                    <div class="absolute inset-0 bg-blue-500 rounded-2xl blur opacity-20 group-hover:opacity-30 transition-opacity duration-300"></div>
+                    <textarea 
+                        id="queryInput" 
+                        rows="1"
+                        class="block w-full p-3 md:p-4 pr-12 text-xs md:text-sm text-slate-200 bg-slate-800/90 backdrop-blur-sm border border-slate-700 rounded-2xl placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none shadow-xl transition-all" 
+                        placeholder="Ask about decision logic, rules, or customers..."
+                        required
+                        onkeydown="handleEnter(event)"
+                    ></textarea>
+                    <button type="submit" class="absolute right-2 bottom-2 md:bottom-2.5 p-2 text-blue-500 hover:text-white hover:bg-blue-600 rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed" id="sendButton">
+                        <i class="fas fa-paper-plane text-base md:text-lg"></i>
+                    </button>
+                </form>
+                <p class="text-center text-[10px] md:text-xs text-slate-500 mt-2 md:mt-3">
+                    Powered by Hybrid Retrieval (GitHub Code + Vector Search) & Real-time DB
+                </p>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // Always use port 9001 for backend API
+        const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+            ? 'http://localhost:9001'
+            : `http://${window.location.hostname}:9001`;
+        
+        console.log('API Base URL:', API_BASE_URL);
+        
+        const chatContainer = document.getElementById('chatContainer');
+        const queryForm = document.getElementById('queryForm');
+        const queryInput = document.getElementById('queryInput');
+        const sendButton = document.getElementById('sendButton');
+        const modelSelect = document.getElementById('modelSelect');
+
+        // Auto-resize textarea
+        queryInput.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = (this.scrollHeight) + 'px';
+            if(this.value === '') this.style.height = 'auto';
+        });
+
+        function handleEnter(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                queryForm.dispatchEvent(new Event('submit'));
+            }
+        }
+
+        function setInput(text) {
+            queryInput.value = text;
+            queryInput.focus();
+            queryInput.dispatchEvent(new Event('input'));
+        }
+
+        // Fetch Models on Load
+        async function loadModels() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/models`);
+                const models = await response.json();
+                modelSelect.innerHTML = models.map(m => 
+                    `<option value="${m.id}">${m.label}</option>`
+                ).join('');
+            } catch (error) {
+                console.error('Error loading models:', error);
+                modelSelect.innerHTML = '<option disabled>Failed to load models</option>';
+            }
+        }
+        loadModels();
+
+        function appendMessage(content, isUser, reasoning = null) {
+            const wrapperDiv = document.createElement('div');
+            wrapperDiv.className = `flex ${isUser ? 'justify-end' : 'justify-start'} px-2`;
+            
+            const innerHTML = isUser ? `
+                <div class="message-bubble user-message p-3 md:p-4 text-white shadow-lg">
+                    <p class="text-xs md:text-sm whitespace-pre-wrap">${content}</p>
+                </div>
+            ` : `
+                <div class="flex gap-2 md:gap-3 max-w-full md:max-w-4xl w-full">
+                    <div class="w-6 h-6 md:w-8 md:h-8 rounded-full bg-blue-600 flex-shrink-0 flex items-center justify-center mt-1">
+                        <i class="fas fa-robot text-white text-xs"></i>
+                    </div>
+                    <div class="flex-1 space-y-2 min-w-0">
+                        <div class="bot-message p-3 md:p-5 shadow-md markdown-body text-xs md:text-sm leading-relaxed text-slate-200">
+                            ${content ? marked.parse(content) : '<span class="text-slate-500">Processing...</span>'}
+                        </div>
+                        <div class="reasoning-panel bg-slate-800/50 border border-slate-700/50 rounded-lg p-2 md:p-3 text-[10px] md:text-xs text-slate-400">
+                            ${reasoning ? `
+                                <div class="flex items-center gap-2 mb-2 font-semibold text-slate-300">
+                                    <i class="fas fa-microchip"></i> <span class="hidden sm:inline">Reasoning Context</span><span class="sm:hidden">Context</span>
+                                </div>
+                                <div class="grid grid-cols-2 gap-2 md:gap-4">
+                                    <div>
+                                        <span class="text-slate-500">Snippets:</span> 
+                                        <span class="text-blue-400">${reasoning.code_snippets_count}</span>
+                                    </div>
+                                    <div>
+                                        <span class="text-slate-500">Entities:</span> 
+                                        <span class="text-green-400">${Object.keys(reasoning.extracted_entities || {}).length > 0 ? 'Found' : 'None'}</span>
+                                    </div>
+                                </div>
+                                ${reasoning.db_context_summary && reasoning.db_context_summary.length > 0 ? `
+                                    <div class="mt-2 pt-2 border-t border-slate-700/50">
+                                        <details class="cursor-pointer">
+                                            <summary class="text-slate-500 mb-1 hover:text-slate-300">DB Context</summary>
+                                            <div class="font-mono bg-slate-900/50 p-2 rounded text-[9px] md:text-[10px] overflow-x-auto max-h-32 overflow-y-auto">
+                                                ${reasoning.db_context_summary}
+                                            </div>
+                                        </details>
+                                    </div>
+                                ` : ''}
+                            ` : '<span class="text-slate-500">Collecting reasoning context...</span>'}
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            wrapperDiv.innerHTML = innerHTML;
+            chatContainer.appendChild(wrapperDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+            return wrapperDiv;
+        }
+
+        function showTyping() {
+            const wrapperDiv = document.createElement('div');
+            wrapperDiv.className = 'flex justify-start px-2';
+            wrapperDiv.id = 'typingIndicator';
+            wrapperDiv.innerHTML = `
+                <div class="flex gap-2 md:gap-3">
+                    <div class="w-6 h-6 md:w-8 md:h-8 rounded-full bg-blue-600 flex-shrink-0 flex items-center justify-center mt-1">
+                        <i class="fas fa-robot text-white text-xs"></i>
+                    </div>
+                    <div class="bot-message p-3 md:p-4 shadow-md flex items-center">
+                        <div class="typing-indicator">
+                            <span></span><span></span><span></span>
+                        </div>
+                    </div>
+                </div>
+            `;
+            chatContainer.appendChild(wrapperDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+            return wrapperDiv;
+        }
+
+        // Typewriter effect function
+        async function typeWriterEffect(element, text, speed = 10) {
+            element.innerHTML = ''; // Clear initial content
+            let i = 0;
+            
+            // We need to parse markdown first, but typing HTML tags one by one breaks rendering.
+            // Simple approach: Render full markdown, then reveal it? 
+            // Or: Just stream the text content if it's simple.
+            // Better approach for "streaming feel": 
+            // 1. Parse markdown to HTML
+            // 2. But since we can't easily typewrite HTML structure, we will simulate "chunks"
+            
+            const html = marked.parse(text);
+            // For simplicity and robustness with markdown, we'll just fade it in or 
+            // use a very fast chunked append if we really want "streaming" look.
+            // Let's try a simple chunked reveal of the *HTML* which is risky but often works if chunks are small text nodes.
+            // Actually, safest is to just show it. But user asked for "streaming should work".
+            // Let's simulate "network streaming" by appending chunks of the response text.
+            
+            const words = text.split(' ');
+            let currentText = '';
+            
+            for (const word of words) {
+                currentText += word + ' ';
+                element.innerHTML = marked.parse(currentText);
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+                await new Promise(r => setTimeout(r, speed)); // Delay between words
+            }
+        }
+
+        queryForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const query = queryInput.value.trim();
+            if (!query) return;
+
+            // UI Updates
+            appendMessage(query, true);
+            queryInput.value = '';
+            queryInput.style.height = 'auto';
+            sendButton.disabled = true;
+            
+            const typingDiv = showTyping();
+
+            try {
+                const useStreaming = true; // Streaming enabled by default
+                
+                if (useStreaming) {
+                    // Real Server-Sent Events streaming
+                    typingDiv.remove();
+                    const msgWrapper = appendMessage('', false, null);
+                    const contentDiv = msgWrapper.querySelector('.markdown-body');
+                    const reasoningDiv = msgWrapper.querySelector('.reasoning-panel');
+                    
+                    let fullContent = '';
+                    let metadata = null;
+                    
+                    const response = await fetch(`${API_BASE_URL}/query`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            query: query,
+                            model_id: modelSelect.value,
+                            stream: true
+                        })
+                    });
+
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
+                    let buffer = '';
+
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+
+                        buffer += decoder.decode(value, { stream: true });
+                        const lines = buffer.split('\n');
+                        buffer = lines.pop(); // Keep incomplete line in buffer
+
+                        for (const line of lines) {
+                            if (line.startsWith('data: ')) {
+                                const data = JSON.parse(line.slice(6));
+                                
+                                if (data.type === 'metadata') {
+                                    metadata = data;
+                                } else if (data.type === 'content') {
+                                    fullContent += data.content;
+                                    contentDiv.innerHTML = marked.parse(fullContent);
+                                    chatContainer.scrollTop = chatContainer.scrollHeight;
+                                } else if (data.type === 'done') {
+                                    // Update reasoning with final metadata
+                                    if (metadata && reasoningDiv) {
+                                        reasoningDiv.innerHTML = `
+                                            <div class="flex items-center gap-2 mb-2 font-semibold text-slate-300">
+                                                <i class="fas fa-microchip"></i> <span class="hidden sm:inline">Reasoning Context</span><span class="sm:hidden">Context</span>
+                                            </div>
+                                            <div class="grid grid-cols-2 gap-2 md:gap-4">
+                                                <div>
+                                                    <span class="text-slate-500">Snippets:</span> 
+                                                    <span class="text-blue-400">${metadata.code_snippets_count}</span>
+                                                </div>
+                                                <div>
+                                                    <span class="text-slate-500">Entities:</span> 
+                                                    <span class="text-green-400">${Object.keys(metadata.extracted_entities || {}).length > 0 ? 'Found' : 'None'}</span>
+                                                </div>
+                                                <div>
+                                                    <span class="text-slate-500">Time:</span> 
+                                                    <span class="text-purple-400">${data.response_time_ms.toFixed(0)}ms</span>
+                                                </div>
+                                                <div>
+                                                    <span class="text-slate-500">Chunks:</span> 
+                                                    <span class="text-yellow-400">${data.chunks_sent}</span>
+                                                </div>
+                                            </div>
+                                        `;
+                                    }
+                                } else if (data.type === 'error') {
+                                    contentDiv.innerHTML = `<p class="text-red-400">Error: ${data.error}</p>`;
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // Non-streaming mode (original behavior)
+                    const response = await fetch(`${API_BASE_URL}/query`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            query: query,
+                            model_id: modelSelect.value,
+                            stream: false
+                        })
+                    });
+
+                    const data = await response.json();
+                    
+                    typingDiv.remove();
+
+                    if (response.ok) {
+                        const msgWrapper = appendMessage('', false, data.reasoning);
+                        const contentDiv = msgWrapper.querySelector('.markdown-body');
+                        await typeWriterEffect(contentDiv, data.answer);
+                    } else {
+                        appendMessage(`Error: ${data.detail || 'Failed to get response'}`, false);
+                    }
+                }
+
+            } catch (error) {
+                typingDiv.remove();
+                appendMessage(`Network Error: ${error.message}. Ensure backend is running on port 9001.`, false);
+            } finally {
+                sendButton.disabled = false;
+                queryInput.focus();
+            }
+        });
+    </script>
+</body>
+</html>
